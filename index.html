@@ -416,13 +416,56 @@
     // Nombre maximum de défis par session, puis message QR code
     const MAX_DEFIS = 5;
     const MESSAGE_FIN = "Flash le QR code pour continuer";
-    let tires = 0;
+    // Le compteur est mémorisé sur le téléphone : actualiser la page ne le remet pas à zéro.
+    // Seul le QR code le remet à zéro : il doit ouvrir l'adresse de la page suivie de #continuer
+    const CLE_COMPTEUR = 'defis-anniv-compteur-v1';
+    const CODE_QR = 'continuer';
+    function lireCompteur() {
+      try {
+        const n = parseInt(localStorage.getItem(CLE_COMPTEUR), 10);
+        return Number.isInteger(n) && n > 0 ? n : 0;
+      } catch (e) { return 0; }
+    }
+    function sauverCompteur() {
+      try { localStorage.setItem(CLE_COMPTEUR, String(tires)); } catch (e) {}
+    }
+    let tires = lireCompteur();
 
     const card = document.getElementById('card');
     const btn = document.getElementById('actionBtn');
     let intervalId = null;
     let isRunning = false;
     let affiche = null;
+
+    function afficherBlocage() {
+      card.textContent = MESSAGE_FIN;
+      card.classList.remove('stopped', 'placeholder');
+      card.classList.add('limit');
+      btn.disabled = true;
+    }
+
+    function debloquer() {
+      if (isRunning) { clearInterval(intervalId); isRunning = false; btn.classList.remove('running'); }
+      tires = 0;
+      sauverCompteur();
+      btn.disabled = false;
+      btn.textContent = "Lancer";
+      card.classList.remove('limit', 'stopped');
+      card.classList.add('placeholder');
+      card.textContent = "Touche le bouton pour lancer";
+    }
+
+    // Arrivée par le QR code : on débloque, puis on efface #continuer de l'adresse
+    // pour qu'une simple actualisation ne débloque pas une deuxième fois
+    function verifierQR() {
+      if (location.hash.replace('#', '').toLowerCase() !== CODE_QR) return false;
+      debloquer();
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+      return true;
+    }
+
+    if (!verifierQR() && tires >= MAX_DEFIS) afficherBlocage();
+    addEventListener('hashchange', verifierQR);
 
     // Pendant le défilement : simple effet visuel, le vrai défi est tiré au STOP
     function defilement() {
@@ -459,6 +502,7 @@
         // Le vrai défi est pioché dans la pioche mélangée
         card.textContent = piocherDefi();
         tires++;
+        sauverCompteur();
         btn.textContent = "Recommencer";
         btn.classList.remove('running');
         card.classList.add('stopped');
@@ -467,10 +511,7 @@
       } else {
         // Limite atteinte : le message remplace le défi et le bouton se bloque
         if (tires >= MAX_DEFIS) {
-          card.textContent = MESSAGE_FIN;
-          card.classList.remove('stopped', 'placeholder');
-          card.classList.add('limit');
-          btn.disabled = true;
+          afficherBlocage();
           return;
         }
 
